@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Pakar UGD - Diagnosa DBD</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Library Grafik -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; }
+        
+        /* Animasi Transisi Halaman */
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Logic Tree Styles */
+        .tree-node {
+            transition: all 0.3s ease;
+            border-left: 4px solid #e5e7eb;
+        }
+        .tree-node.active {
+            border-left-color: #3b82f6; /* Blue-500 */
+            background-color: #eff6ff;
+        }
+        .tree-node.danger {
+            border-left-color: #ef4444; /* Red-500 */
+            background-color: #fef2f2;
+        }
+        
+        /* Print Styles */
+        @media print {
+            header, nav, .no-print { display: none !important; }
+            body { background: white; height: auto; overflow: visible; }
+            
+            /* Hanya tampilkan view laporan saat print */
+            #view-laporan { display: block !important; }
+            #view-dashboard, #view-diagnosis, #loginScreen { display: none !important; }
+            
+            .shadow-sm, .shadow-md, .shadow-xl { box-shadow: none !important; }
+            .border { border: 1px solid #ccc !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 h-screen overflow-hidden flex flex-col">
+
+    <!-- LOGIN SCREEN -->
+    <div id="loginScreen" class="fixed inset-0 z-50 bg-slate-100 flex items-center justify-center p-4">
+        <div class="bg-white max-w-md w-full rounded-2xl shadow-xl overflow-hidden fade-in">
+            <div class="bg-blue-600 p-8 text-center">
+                <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+                    <i class="fas fa-hospital-user text-3xl text-blue-600"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-white">SISTEM PAKAR UGD</h1>
+                <p class="text-blue-100 text-sm">Unit Gawat Darurat - Deteksi Dini DBD</p>
+            </div>
+            <div class="p-8">
+                <form onsubmit="handleLogin(event)">
+                    <div class="mb-4">
+                        <label class="block text-sm font-semibold text-slate-600 mb-2">ID Petugas</label>
+                        <input type="text" id="username" class="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition" placeholder="" required>
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-sm font-semibold text-slate-600 mb-2">Kata Sandi</label>
+                        <input type="password" id="password" class="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition" placeholder="" required>
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition shadow-md">
+                        MASUK SISTEM
+                    </button>
+                    <p class="text-xs text-center text-slate-400 mt-4"></p>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTAINER (Hidden initially) -->
+    <div id="appContainer" class="hidden flex-1 flex flex-col h-full">
+        
+        <!-- Navbar -->
+        <header class="bg-white shadow-sm border-b border-slate-200 z-20">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="bg-red-500 text-white p-2 rounded-lg">
+                        <i class="fas fa-heartbeat"></i>
+                    </div>
+                    <div>
+                        <h2 class="font-bold text-slate-800 leading-tight">UGD Rumah Sakit</h2>
+                        <p class="text-xs text-slate-500">Sistem Penunjang Keputusan Medis</p>
+                    </div>
+                </div>
+                
+                <!-- Main Navigation -->
+                <nav class="hidden md:flex space-x-1 bg-slate-100 p-1 rounded-lg">
+                    <button onclick="switchView('diagnosis')" id="nav-diagnosis" class="px-4 py-1.5 rounded-md text-sm font-semibold bg-white text-blue-600 shadow-sm transition">
+                        <i class="fas fa-stethoscope mr-1"></i> Diagnosa
+                    </button>
+                    <button onclick="switchView('dashboard')" id="nav-dashboard" class="px-4 py-1.5 rounded-md text-sm font-semibold text-slate-500 hover:text-slate-700 transition">
+                        <i class="fas fa-chart-pie mr-1"></i> Dashboard
+                    </button>
+                    <button onclick="switchView('laporan')" id="nav-laporan" class="px-4 py-1.5 rounded-md text-sm font-semibold text-slate-500 hover:text-slate-700 transition">
+                        <i class="fas fa-file-alt mr-1"></i> Laporan
+                    </button>
+                </nav>
+
+                <div class="flex items-center gap-4">
+                    <div class="hidden md:block text-right">
+                        <p class="text-sm font-semibold" id="officerName">Dr. Jaga</p>
+                        <p class="text-xs text-green-600">● Online</p>
+                    </div>
+                    <button onclick="logout()" class="p-2 text-slate-400 hover:text-red-500 transition" title="Logout">
+                        <i class="fas fa-sign-out-alt text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Content Area -->
+        <main class="flex-1 overflow-hidden relative bg-slate-50">
+            
+            <!-- VIEW 1: DIAGNOSIS (Split Screen) -->
+            <div id="view-diagnosis" class="h-full flex flex-col md:flex-row max-w-7xl mx-auto fade-in">
+                
+                <!-- Left Panel: Input Data (Scrollable) -->
+                <div class="w-full md:w-1/2 p-6 overflow-y-auto border-r border-slate-200 bg-white">
+                    <h3 class="text-lg font-bold text-slate-800 mb-1 border-l-4 border-blue-500 pl-3">Input Data Klinis Pasien</h3>
+                    <p class="text-sm text-slate-500 mb-6 pl-4">Masukkan parameter premis A, B, C, dan D.</p>
+
+                    <form id="diagnosisForm" onsubmit="calculateDiagnosis(event)" class="space-y-6">
+                        
+                        <!-- Identitas -->
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Identitas</label>
+                            <input type="text" id="patientName" class="w-full bg-white px-3 py-2 rounded border border-slate-300 text-sm mb-2" placeholder="Nama Pasien" required>
+                            <input type="number" id="patientAge" class="w-full bg-white px-3 py-2 rounded border border-slate-300 text-sm" placeholder="Usia (Tahun)" required>
+                        </div>
+
+                        <!-- Premis A & B -->
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">
+                                    <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold mr-2">A</span>
+                                    Suhu Tubuh (°C)
+                                </label>
+                                <div class="relative">
+                                    <input type="number" step="0.1" id="inputTemp" class="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="" required>
+                                    <i class="fas fa-thermometer-half absolute left-3 top-3 text-slate-400"></i>
+                                </div>
+                                <p class="text-xs text-slate-400 mt-1">*Demam jika > 38°C</p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">
+                                    <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold mr-2">B</span>
+                                    Lama Demam (Hari)
+                                </label>
+                                <div class="relative">
+                                    <input type="number" id="inputDays" class="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0" required>
+                                    <i class="fas fa-calendar-day absolute left-3 top-3 text-slate-400"></i>
+                                </div>
+                                <p class="text-xs text-slate-400 mt-1">*Kritis jika > 3 hari</p>
+                            </div>
+                        </div>
+
+                        <hr class="border-slate-200">
+
+                        <!-- Premis C -->
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">
+                                <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold mr-2">C</span>
+                                Tanda Gejala Fisik Lain
+                            </label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition">
+                                    <input type="radio" name="symptoms" value="yes" class="w-4 h-4 text-blue-600" required>
+                                    <span class="ml-2 text-sm">Ada (Bintik Merah/Nyeri Sendi)</span>
+                                </label>
+                                <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-slate-50 transition">
+                                    <input type="radio" name="symptoms" value="no" class="w-4 h-4 text-slate-400">
+                                    <span class="ml-2 text-sm">Tidak Ada</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Premis D -->
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">
+                                <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold mr-2">D</span>
+                                Hasil Lab: Trombosit (/µL)
+                            </label>
+                            <div class="relative">
+                                <input type="number" id="inputPlatelets" class="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="" required>
+                                <i class="fas fa-flask absolute left-3 top-3 text-slate-400"></i>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">*Rendah jika < 100.000</p>
+                        </div>
+
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg hover:shadow-xl transition transform active:scale-95 flex justify-center items-center gap-2">
+                            <i class="fas fa-stethoscope"></i> PROSES DIAGNOSA
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Right Panel: Visualization & Result (Scrollable) -->
+                <div class="w-full md:w-1/2 bg-slate-50 p-6 overflow-y-auto">
+                    
+                    <!-- Empty State -->
+                    <div id="emptyState" class="h-full flex flex-col items-center justify-center text-slate-400 text-center opacity-70">
+                        <i class="fas fa-user-md text-6xl mb-4 text-slate-300"></i>
+                        <h4 class="text-xl font-semibold">Belum Ada Diagnosa</h4>
+                        <p class="text-sm max-w-xs">Isi data klinis di panel kiri dan tekan tombol proses untuk melihat alur sistem pakar.</p>
+                    </div>
+
+                    <!-- Result Container -->
+                    <div id="resultContainer" class="hidden fade-in space-y-6">
+                        
+                        <!-- Diagnosis Card -->
+                        <div id="finalCard" class="bg-white rounded-xl shadow-md p-6 border-l-8 border-slate-300">
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Hasil Diagnosa</p>
+                                    <h2 id="finalTitle" class="text-2xl font-bold text-slate-800">Menunggu...</h2>
+                                </div>
+                                <div id="finalIcon" class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
+                                    <i class="fas fa-question text-slate-400 text-xl"></i>
+                                </div>
+                            </div>
+                            <p id="finalDesc" class="text-slate-600 text-sm mb-4">...</p>
+                            <div id="recommendationBox" class="bg-slate-50 p-3 rounded-lg border border-slate-200 text-sm">
+                                <span class="font-bold text-slate-700 block mb-1"><i class="fas fa-clipboard-list mr-1"></i> Rekomendasi:</span>
+                                <span id="recommendationText">...</span>
+                            </div>
+                        </div>
+
+                        <!-- Visual Tree -->
+                        <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+                            <h4 class="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                                <i class="fas fa-project-diagram text-blue-500"></i> Visualisasi Alur (Forward Chaining)
+                            </h4>
+                            
+                            <div class="relative pl-2 pb-2">
+                                
+                                <!-- Step 1: Rule 1 -->
+                                <div class="relative pl-8 pb-8">
+                                    <!-- Connector Line -->
+                                    <div class="absolute left-3 top-8 bottom-0 w-0.5 bg-slate-200"></div>
+                                    <!-- Icon -->
+                                    <div id="icon-s1" class="absolute left-0 top-1 w-7 h-7 bg-slate-200 rounded-full flex items-center justify-center text-white font-bold text-xs z-10">1</div>
+                                    
+                                    <div id="node-s1" class="p-3 rounded-lg border border-slate-200 bg-slate-50 tree-node">
+                                        <div class="flex justify-between items-center mb-1">
+                                            <span class="font-bold text-sm text-slate-700">Level 1: Cek Gejala Awal</span>
+                                            <span id="badge-s1" class="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-bold">UNCHECKED</span>
+                                        </div>
+                                        <div class="text-xs text-slate-500">
+                                            <p>IF Suhu > 38°C (A) <span id="val-a" class="font-mono font-bold ml-1">[-]</span></p>
+                                            <p>AND Lama > 3 Hari (B) <span id="val-b" class="font-mono font-bold ml-1">[-]</span></p>
+                                            <p class="mt-1 font-semibold text-blue-600">THEN S1 (Suspek Infeksi)</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Step 2: Rule 2 -->
+                                <div class="relative pl-8 pb-8">
+                                    <div class="absolute left-3 top-8 bottom-0 w-0.5 bg-slate-200"></div>
+                                    <div id="icon-s2" class="absolute left-0 top-1 w-7 h-7 bg-slate-200 rounded-full flex items-center justify-center text-white font-bold text-xs z-10">2</div>
+                                    
+                                    <div id="node-s2" class="p-3 rounded-lg border border-slate-200 bg-slate-50 tree-node">
+                                        <div class="flex justify-between items-center mb-1">
+                                            <span class="font-bold text-sm text-slate-700">Level 2: Cek Fisik</span>
+                                            <span id="badge-s2" class="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-bold">UNCHECKED</span>
+                                        </div>
+                                        <div class="text-xs text-slate-500">
+                                            <p>IF S1 is True</p>
+                                            <p>AND Bintik/Nyeri (C) <span id="val-c" class="font-mono font-bold ml-1">[-]</span></p>
+                                            <p class="mt-1 font-semibold text-blue-600">THEN S2 (Suspek Dengue)</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Step 3: Rule 3 (Final) -->
+                                <div class="relative pl-8">
+                                    <div id="icon-z1" class="absolute left-0 top-1 w-7 h-7 bg-slate-200 rounded-full flex items-center justify-center text-white font-bold text-xs z-10">3</div>
+                                    
+                                    <div id="node-z1" class="p-3 rounded-lg border border-slate-200 bg-slate-50 tree-node">
+                                        <div class="flex justify-between items-center mb-1">
+                                            <span class="font-bold text-sm text-slate-700">Level 3: Cek Lab</span>
+                                            <span id="badge-z1" class="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-bold">UNCHECKED</span>
+                                        </div>
+                                        <div class="text-xs text-slate-500">
+                                            <p>IF S2 is True</p>
+                                            <p>AND Trombosit < 100rb (D) <span id="val-d" class="font-mono font-bold ml-1">[-]</span></p>
+                                            <p class="mt-1 font-semibold text-red-600">THEN Z1 (POSITIF DBD)</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <button onclick="resetForm()" class="w-full bg-white border border-slate-300 text-slate-600 font-semibold py-2 rounded-lg hover:bg-slate-50 transition">
+                            <i class="fas fa-undo mr-1"></i> Reset / Pasien Baru
+                        </button>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW 2: DASHBOARD (Stats & Charts) -->
+            <div id="view-dashboard" class="hidden h-full overflow-y-auto p-6 max-w-7xl mx-auto fade-in">
+                <div class="mb-6">
+                    <h3 class="text-2xl font-bold text-slate-800">Dashboard Monitoring</h3>
+                    <p class="text-slate-500 text-sm">Analisis statistik hasil diagnosa pasien UGD.</p>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <p class="text-slate-500 text-xs font-bold uppercase">Total Pasien</p>
+                        <h2 id="stat-total" class="text-3xl font-bold text-slate-800">0</h2>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl border-l-4 border-red-500 shadow-sm">
+                        <p class="text-red-500 text-xs font-bold uppercase">Positif DBD</p>
+                        <h2 id="stat-dbd" class="text-3xl font-bold text-red-600">0</h2>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl border-l-4 border-orange-400 shadow-sm">
+                        <p class="text-orange-500 text-xs font-bold uppercase">Suspek Dengue</p>
+                        <h2 id="stat-suspect" class="text-3xl font-bold text-orange-600">0</h2>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl border-l-4 border-green-500 shadow-sm">
+                        <p class="text-green-500 text-xs font-bold uppercase">Lainnya/Aman</p>
+                        <h2 id="stat-safe" class="text-3xl font-bold text-green-600">0</h2>
+                    </div>
+                </div>
+
+                <!-- Chart Section (Moved from bottom) -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm max-w-3xl mx-auto">
+                    <div class="flex justify-between items-center mb-4">
+                        <h4 class="font-bold text-slate-700"><i class="fas fa-chart-pie mr-2 text-blue-500"></i>Proporsi Diagnosa</h4>
+                    </div>
+                    <div class="h-80 flex justify-center items-center">
+                        <canvas id="diagnosisChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW 3: LAPORAN (Table & Print) -->
+            <div id="view-laporan" class="hidden h-full overflow-y-auto p-6 max-w-7xl mx-auto fade-in">
+                <div class="flex justify-between items-center mb-6 no-print">
+                    <div>
+                        <h3 class="text-2xl font-bold text-slate-800">Laporan Data Pasien</h3>
+                        <p class="text-slate-500 text-sm">Rekapitulasi riwayat pemeriksaan dan diagnosa.</p>
+                    </div>
+                    <button onclick="clearHistory()" class="text-red-500 hover:bg-red-50 px-3 py-2 rounded-lg text-sm transition">
+                        <i class="fas fa-trash-alt mr-1"></i> Hapus Data
+                    </button>
+                </div>
+
+                <!-- Table -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-bold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-4 whitespace-nowrap">Waktu</th>
+                                    <th class="p-4 whitespace-nowrap">Nama Pasien</th>
+                                    <th class="p-4 whitespace-nowrap">Usia</th>
+                                    <th class="p-4 whitespace-nowrap">Suhu / Trombosit</th>
+                                    <th class="p-4 whitespace-nowrap">Hasil Diagnosa</th>
+                                    <th class="p-4 whitespace-nowrap text-right no-print">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="patientTableBody" class="text-sm text-slate-700 divide-y divide-slate-100">
+                                <!-- Data will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="noDataMessage" class="hidden p-8 text-center text-slate-400">
+                        <i class="fas fa-inbox text-4xl mb-2"></i>
+                        <p>Belum ada data riwayat pasien.</p>
+                    </div>
+                </div>
+
+                <!-- Footer / Action Section -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <div class="flex flex-col md:flex-row justify-between gap-6">
+                        
+                        <!-- Actions -->
+                        <div class="no-print w-full md:w-1/3">
+                            <h4 class="font-bold text-slate-700 mb-4"><i class="fas fa-print mr-2 text-slate-400"></i>Cetak Laporan</h4>
+                            <button onclick="window.print()" class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition text-sm font-semibold shadow-md">
+                                <i class="fas fa-file-pdf"></i> Cetak PDF
+                            </button>
+                            <p class="text-xs text-slate-400 mt-2">Pastikan orientasi kertas 'Landscape' saat mencetak.</p>
+                        </div>
+
+                        <!-- Info Kelompok 2 -->
+                        <div class="w-full md:w-2/3 border-t md:border-t-0 md:border-l border-slate-100 pt-6 md:pt-0 md:pl-6">
+                            <h5 class="font-bold text-slate-800 text-sm mb-4 border-b border-slate-100 pb-2">TIM PENGEMBANG - KELOMPOK 2</h5>
+                            
+                            <!-- Member Grid -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                                <!-- Member 1 -->
+                                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 text-left flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs shadow-sm">
+                                        RA
+                                    </div>
+                                    <div>
+                                        <p class="font-bold text-slate-700 text-xs uppercase">RAFLY ANDHIKA RASWAN</p>
+                                        <p class="text-[10px] text-slate-500 font-mono">NPM: 202243501102</p>
+                                    </div>
+                                </div>
+                                <!-- Member 2 -->
+                                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 text-left flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs shadow-sm">
+                                        GF
+                                    </div>
+                                    <div>
+                                        <p class="font-bold text-slate-700 text-xs uppercase">GALANG FIRGIAWAN</p>
+                                        <p class="text-[10px] text-slate-500 font-mono">NPM: 202243501187</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Academic Info -->
+                            <div class="text-xs text-slate-600 mb-4 text-left bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                <p class="font-bold text-slate-800 mb-1"><i class="fas fa-university mr-1 text-slate-400"></i> Universitas Indraprasta PGRI</p>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 pl-5">
+                                    <p>Mata Kuliah: <span class="font-semibold text-slate-700">Sistem Basis Data</span></p>
+                                    <p>Dosen: <span class="font-semibold text-slate-700">Furqoni Yudhistira, S.Sc., M.Kom</span></p>
+                                </div>
+                            </div>
+
+                            <!-- Disclaimer -->
+                            <div class="bg-yellow-50 border border-yellow-100 rounded-lg p-2 text-[10px] text-yellow-800 leading-tight text-left flex gap-2 items-start">
+                                <i class="fas fa-exclamation-circle mt-0.5"></i>
+                                <div>
+                                    <span class="font-bold">Disclaimer:</span> Sistem ini hanya sebagai alat bantu diagnosis awal. Konsultasi dengan dokter profesional sangat disarankan.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </main>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // --- Global Data Storage Key ---
+        const STORAGE_KEY = 'UGD_SYSTEM_DATA';
+        let myChart = null; // Variable for Chart Instance
+
+        // --- 1. Login Logic ---
+        function handleLogin(e) {
+            e.preventDefault();
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+
+            if (u === 'admin' && p === 'admin') {
+                document.getElementById('loginScreen').classList.add('hidden');
+                document.getElementById('appContainer').classList.remove('hidden');
+                document.getElementById('officerName').innerText = "Admin Medis";
+                
+                // Initialize Data
+                loadData();
+            } else {
+                alert("");
+            }
+        }
+
+        function logout() {
+            location.reload();
+        }
+
+        // --- 2. Navigation Logic ---
+        function switchView(viewName) {
+            const btnDiag = document.getElementById('nav-diagnosis');
+            const btnDash = document.getElementById('nav-dashboard');
+            const btnLap = document.getElementById('nav-laporan');
+            
+            const viewDiag = document.getElementById('view-diagnosis');
+            const viewDash = document.getElementById('view-dashboard');
+            const viewLap = document.getElementById('view-laporan');
+
+            // Reset All
+            viewDiag.classList.add('hidden');
+            viewDash.classList.add('hidden');
+            viewLap.classList.add('hidden');
+
+            const inactiveClass = "px-4 py-1.5 rounded-md text-sm font-semibold text-slate-500 hover:text-slate-700 transition";
+            const activeClass = "px-4 py-1.5 rounded-md text-sm font-semibold bg-white text-blue-600 shadow-sm transition";
+
+            btnDiag.className = inactiveClass;
+            btnDash.className = inactiveClass;
+            btnLap.className = inactiveClass;
+
+            // Activate Target
+            if (viewName === 'diagnosis') {
+                viewDiag.classList.remove('hidden');
+                btnDiag.className = activeClass;
+            } else if (viewName === 'dashboard') {
+                viewDash.classList.remove('hidden');
+                btnDash.className = activeClass;
+                loadData();
+            } else if (viewName === 'laporan') {
+                viewLap.classList.remove('hidden');
+                btnLap.className = activeClass;
+                loadData();
+            }
+        }
+
+        // --- 3. Diagnosis Logic ---
+        function calculateDiagnosis(e) {
+            e.preventDefault();
+            // Inputs
+            const name = document.getElementById('patientName').value;
+            const age = document.getElementById('patientAge').value;
+            const temp = parseFloat(document.getElementById('inputTemp').value);
+            const days = parseInt(document.getElementById('inputDays').value);
+            const symptoms = document.querySelector('input[name="symptoms"]:checked').value;
+            const platelets = parseInt(document.getElementById('inputPlatelets').value);
+
+            // Facts
+            const FactA = temp > 38;
+            const FactB = days > 3;
+            const FactC = (symptoms === 'yes');
+            const FactD = platelets < 100000;
+
+            // Logic
+            let pathStatus = 0;
+
+            if (FactA && FactB) {
+                pathStatus = 1;
+                if (FactC) {
+                    pathStatus = 2;
+                    if (FactD) {
+                        pathStatus = 3;
+                    }
+                }
+            }
+
+            // Update UI (Existing Logic)
+            updateUI(pathStatus, FactA, FactB, FactC, FactD, temp, days, symptoms, platelets, name);
+            
+            // --- Save Data ---
+            savePatientData({
+                id: Date.now(),
+                timestamp: new Date().toLocaleString('id-ID'),
+                name, age, temp, days, symptoms, platelets,
+                pathStatus,
+                diagnosisResult: getDiagnosisText(pathStatus)
+            });
+        }
+
+        // Helper to get text for saving
+        function getDiagnosisText(status) {
+            if (status === 3) return "POSITIF DBD";
+            if (status === 2) return "Suspek Dengue (DD)";
+            if (status === 1) return "Infeksi Akut (Febris)";
+            return "Observasi Biasa";
+        }
+
+        function updateUI(status, fA, fB, fC, fD, temp, days, symp, plat, name) {
+            const setVal = (id, val, isRisk) => {
+                const el = document.getElementById(id);
+                el.innerText = val;
+                el.className = isRisk ? "font-mono font-bold ml-1 text-red-600" : "font-mono font-bold ml-1 text-green-600";
+            };
+            
+            setVal('val-a', `[${temp}°C]`, fA);
+            setVal('val-b', `[${days} Hari]`, fB);
+            setVal('val-c', `[${fC ? 'Ya' : 'Tdk'}]`, fC);
+            setVal('val-d', `[${plat}]`, fD);
+
+            resetNodes();
+            updateTreeVisuals(status, fA, fB, fC, fD);
+            setResultContent(status, name);
+            
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('resultContainer').classList.remove('hidden');
+        }
+
+        // --- 4. Data Management (Local Storage) ---
+        function getPatients() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            return data ? JSON.parse(data) : [];
+        }
+
+        function savePatientData(record) {
+            const patients = getPatients();
+            patients.unshift(record); // Add to top
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(patients));
+        }
+
+        function deletePatient(id) {
+            if(!confirm("Hapus data ini?")) return;
+            const patients = getPatients().filter(p => p.id !== id);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(patients));
+            loadData(); // Refresh UI
+        }
+
+        function clearHistory() {
+            if(!confirm("Yakin ingin menghapus SEMUA data riwayat?")) return;
+            localStorage.removeItem(STORAGE_KEY);
+            loadData();
+        }
+
+        // --- 5. Data Rendering (Updates Dashboard & Laporan) ---
+        function loadData() {
+            const patients = getPatients();
+            const tbody = document.getElementById('patientTableBody');
+            const noData = document.getElementById('noDataMessage');
+            
+            // Calc Stats
+            let dbd = 0, suspect = 0, safe = 0;
+            
+            tbody.innerHTML = '';
+
+            if (patients.length === 0) {
+                noData.classList.remove('hidden');
+            } else {
+                noData.classList.add('hidden');
+                
+                patients.forEach(p => {
+                    // Update Stats
+                    if (p.pathStatus === 3) dbd++;
+                    else if (p.pathStatus === 2) suspect++;
+                    else safe++;
+
+                    // Determine Badge Color
+                    let badgeClass = "bg-slate-100 text-slate-600";
+                    if (p.pathStatus === 3) badgeClass = "bg-red-100 text-red-700 border border-red-200";
+                    else if (p.pathStatus === 2) badgeClass = "bg-orange-100 text-orange-700 border border-orange-200";
+                    else if (p.pathStatus === 1) badgeClass = "bg-yellow-50 text-yellow-700 border border-yellow-200";
+                    else badgeClass = "bg-green-50 text-green-700 border border-green-200";
+
+                    const row = `
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-4 text-slate-500 text-xs">${p.timestamp}</td>
+                            <td class="p-4 font-semibold text-slate-700">
+                                ${p.name} <span class="text-slate-400 font-normal">(${p.age} Thn)</span>
+                            </td>
+                            <td class="p-4 text-xs">
+                                <div class="flex flex-col gap-1">
+                                    <span><i class="fas fa-temperature-high w-4"></i> ${p.temp}°C (${p.days} Hari)</span>
+                                    <span><i class="fas fa-tint w-4"></i> ${p.platelets} /µL</span>
+                                </div>
+                            </td>
+                            <td class="p-4">
+                                <span class="px-2 py-1 rounded text-xs font-bold ${badgeClass}">
+                                    ${p.diagnosisResult}
+                                </span>
+                            </td>
+                            <td class="p-4 text-right no-print">
+                                <button onclick="deletePatient(${p.id})" class="text-slate-400 hover:text-red-500 transition">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                });
+            }
+
+            // Update Stat Cards (In Dashboard View)
+            if(document.getElementById('stat-total')) {
+                document.getElementById('stat-total').innerText = patients.length;
+                document.getElementById('stat-dbd').innerText = dbd;
+                document.getElementById('stat-suspect').innerText = suspect;
+                document.getElementById('stat-safe').innerText = safe;
+            }
+
+            // Update Chart (In Dashboard View)
+            updateChart(dbd, suspect, safe);
+        }
+
+        // --- Chart Logic ---
+        function updateChart(dbd, suspek, aman) {
+            const ctx = document.getElementById('diagnosisChart');
+            if(!ctx) return; // Prevent error if chart element doesn't exist
+
+            if (myChart) {
+                myChart.destroy();
+            }
+
+            myChart = new Chart(ctx.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Positif DBD', 'Suspek Dengue', 'Lainnya/Aman'],
+                    datasets: [{
+                        data: [dbd, suspek, aman],
+                        backgroundColor: [
+                            '#ef4444', // Red (DBD)
+                            '#f97316', // Orange (Suspek)
+                            '#22c55e'  // Green (Aman)
+                        ],
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                boxWidth: 8,
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- Existing Helpers for Tree Visuals ---
+        function updateTreeVisuals(status, fA, fB, fC, fD) {
+            const nodeS1 = document.getElementById('node-s1');
+            const iconS1 = document.getElementById('icon-s1');
+            const badgeS1 = document.getElementById('badge-s1');
+            
+            const nodeS2 = document.getElementById('node-s2');
+            const iconS2 = document.getElementById('icon-s2');
+            const badgeS2 = document.getElementById('badge-s2');
+
+            const nodeZ1 = document.getElementById('node-z1');
+            const iconZ1 = document.getElementById('icon-z1');
+            const badgeZ1 = document.getElementById('badge-z1');
+
+            if (fA && fB) {
+                activateNode(nodeS1, iconS1, badgeS1, "SUSPEK INFEKSI", "bg-blue-500");
+            } else {
+                failNode(nodeS1, iconS1, badgeS1, "NEGATIF (Aman)");
+                return;
+            }
+
+            if (status >= 2) {
+                activateNode(nodeS2, iconS2, badgeS2, "SUSPEK DENGUE", "bg-orange-500");
+            } else {
+                failNode(nodeS2, iconS2, badgeS2, "Bukan Dengue");
+                return;
+            }
+
+            if (status >= 3) {
+                activateNode(nodeZ1, iconZ1, badgeZ1, "POSITIF DBD", "bg-red-600", true);
+            } else {
+                failNode(nodeZ1, iconZ1, badgeZ1, "DBD Negatif");
+            }
+        }
+
+        function activateNode(node, icon, badge, text, colorClass, isFinal = false) {
+            node.classList.add('active');
+            if (isFinal) node.classList.add('danger');
+            icon.className = `absolute left-0 top-1 w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-xs z-10 ${colorClass}`;
+            icon.innerHTML = '<i class="fas fa-check"></i>';
+            badge.className = `text-[10px] px-2 py-0.5 text-white rounded-full font-bold ${colorClass}`;
+            badge.innerText = text;
+        }
+
+        function failNode(node, icon, badge, text) {
+            icon.className = `absolute left-0 top-1 w-7 h-7 bg-slate-300 rounded-full flex items-center justify-center text-white font-bold text-xs z-10`;
+            icon.innerHTML = '<i class="fas fa-times"></i>';
+            badge.className = `text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-bold`;
+            badge.innerText = text;
+        }
+
+        function resetNodes() {
+            const nodes = document.querySelectorAll('.tree-node');
+            nodes.forEach(n => {
+                n.className = "p-3 rounded-lg border border-slate-200 bg-slate-50 tree-node";
+                n.classList.remove('active', 'danger');
+            });
+        }
+
+        function setResultContent(status, patientName) {
+            const card = document.getElementById('finalCard');
+            const title = document.getElementById('finalTitle');
+            const desc = document.getElementById('finalDesc');
+            const recBox = document.getElementById('recommendationBox');
+            const recText = document.getElementById('recommendationText');
+            const iconBox = document.getElementById('finalIcon');
+
+            card.className = "bg-white rounded-xl shadow-md p-6 border-l-8 transition-colors duration-500";
+            recBox.className = "p-3 rounded-lg border text-sm";
+            
+            if (status === 3) {
+                card.classList.add('border-red-600');
+                title.innerText = "POSITIF DEMAM BERDARAH (DBD)";
+                title.className = "text-2xl font-bold text-red-600";
+                desc.innerText = `Pasien ${patientName} menunjukkan gejala lengkap (Demam Tinggi >3 hari, Bintik/Nyeri) dan Trombositopenia berat.`;
+                recBox.classList.add('bg-red-50', 'border-red-200', 'text-red-800');
+                recText.innerText = "SEGERA RAWAT INAP (Opname). Lakukan Rehidrasi Cairan Intravena (Infus) segera dan pantau tanda-tanda syok (DSS).";
+                iconBox.className = "w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-600";
+                iconBox.innerHTML = '<i class="fas fa-exclamation-triangle text-2xl"></i>';
+            } else if (status === 2) {
+                card.classList.add('border-orange-500');
+                title.innerText = "SUSPEK DEMAM DENGUE (DD)";
+                title.className = "text-2xl font-bold text-orange-600";
+                desc.innerText = `Pasien ${patientName} memiliki gejala fisik Dengue, namun Trombosit masih dalam batas aman (>100.000).`;
+                recBox.classList.add('bg-orange-50', 'border-orange-200', 'text-orange-800');
+                recText.innerText = "Rawat jalan dengan pemantauan ketat. Cek darah ulang per 24 jam. Banyak minum air putih & istirahat total.";
+                iconBox.className = "w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center text-orange-600";
+                iconBox.innerHTML = '<i class="fas fa-search-plus text-2xl"></i>';
+            } else if (status === 1) {
+                card.classList.add('border-yellow-400');
+                title.innerText = "INFEKSI AKUT (FEBRIS)";
+                title.className = "text-2xl font-bold text-yellow-600";
+                desc.innerText = `Terdeteksi demam tinggi >3 hari, namun tidak ditemukan tanda fisik khas Dengue (Bintik/Nyeri).`;
+                recBox.classList.add('bg-yellow-50', 'border-yellow-200', 'text-yellow-800');
+                recText.innerText = "Observasi penyebab infeksi lain (Tipus, ISPA, dll). Berikan antipiretik (penurun panas).";
+                iconBox.className = "w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600";
+                iconBox.innerHTML = '<i class="fas fa-thermometer-full text-2xl"></i>';
+            } else {
+                card.classList.add('border-green-500');
+                title.innerText = "OBSERVASI BIASA";
+                title.className = "text-2xl font-bold text-green-600";
+                desc.innerText = `Suhu tubuh atau lama demam belum memenuhi kriteria waspada Demam Berdarah.`;
+                recBox.classList.add('bg-green-50', 'border-green-200', 'text-green-800');
+                recText.innerText = "Istirahat cukup, minum obat penurun panas jika perlu. Kembali jika demam berlanjut > 3 hari.";
+                iconBox.className = "w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600";
+                iconBox.innerHTML = '<i class="fas fa-user-shield text-2xl"></i>';
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('diagnosisForm').reset();
+            document.getElementById('resultContainer').classList.add('hidden');
+            document.getElementById('emptyState').classList.remove('hidden');
+            resetNodes();
+        }
+
+    </script>
+</body>
+</html>
